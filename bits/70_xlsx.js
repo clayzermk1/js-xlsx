@@ -108,7 +108,11 @@ function parseSheet(data) {
 
 	/* 18.3.1.55 mergeCells CT_MergeCells */
 	var merge = [];
-	if(data.match(/<mergeCell ref="([A-Z0-9:]+)"\/>/)) merge = data.match(/<mergeCell ref="([A-Z0-9:]+)"\/>/).slice(1).map(decode_range);
+	if(data.match(/<\/mergeCells>/)) {
+		merge = data.match(/<mergeCell ref="([A-Z0-9:]+)"\/>/g).map(function(range) {
+			return decode_range(/<mergeCell ref="([A-Z0-9:]+)"\/>/.exec(range)[1]);
+		});
+	}
 
 	var refguess = {s: {r:1000000, c:1000000}, e: {r:0, c:0} };
 	var q = ["v","f"];
