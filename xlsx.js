@@ -686,6 +686,14 @@ function parseSheet(data) {
 	var ref = data.match(/<dimension ref="([^"]*)"\s*\/>/);
 	if(ref && ref.length == 2 && ref[1].indexOf(":") !== -1) s["!ref"] = ref[1];
 
+	/* 18.3.1.55 mergeCells CT_MergeCells */
+	var merge = [];
+	if(data.match(/<\/mergeCells>/)) {
+		merge = data.match(/<mergeCell ref="([A-Z0-9:]+)"\/>/g).map(function(range) {
+			return decode_range(/<mergeCell ref="([A-Z0-9:]+)"\/>/.exec(range)[1]);
+		});
+	}
+
 	var refguess = {s: {r:1000000, c:1000000}, e: {r:0, c:0} };
 	var q = ["v","f"];
 	var sidx = 0;
@@ -715,16 +723,27 @@ function parseSheet(data) {
 			var p = {};
 			q.forEach(function(f){var x=d.match(matchtag(f));if(x)p[f]=unescapexml(x[1]);});
 
-			/* SCHEMA IS ACTUALLY INCORRECT HERE.  IF A CELL HAS NO T, EMIT "" */
-			if(cell.t === undefined && p.v === undefined) { p.t = "str"; p.v = undefined; }
+			/* If a cell has no T and no child V value, check for a merge cell */
+			if(cell.t === undefined && p.v === undefined) {
+				if(merge.length > 0) {
+					var mc = decode_cell(cell.r);
+					for(var i = 0; i < merge.length; i++) {
+						if(mc.c >= merge[i].s.c && mc.c <= merge[i].e.c && mc.r >= merge[i].s.r && mc.r <= merge[i].e.r) {
+							s[cell.r] = s[encode_cell(merge[i].s)];
+							return;
+						}
+					}
+				}
+				else { p.t = "str"; p.v = undefined; }
+			}
 			else p.t = (cell.t ? cell.t : "n"); // default is "n" in schema
 			switch(p.t) {
 				case 'n': p.v = parseFloat(p.v); break;
-				case 's': {
+				case 's':
 					sidx = parseInt(p.v, 10);
 					p.v = strs[sidx].t;
 					p.r = strs[sidx].r;
-				} break;
+					break;
 				case 'str': if(p.v) p.v = utf8read(p.v); break; // normal string
 				case 'inlineStr':
 					p.t = 'str'; p.v = unescapexml((d.match(matchtag('t'))||["",""])[1]);
@@ -756,6 +775,7 @@ function parseSheet(data) {
 			s[cell.r] = p;
 		});
 	});
+
 	if(!s["!ref"]) s["!ref"] = encode_range(refguess);
 	return s;
 }
@@ -1027,7 +1047,7 @@ function parseStyles(data) {
 }
 
 function getdata(data) {
-	if(!data) return null; 
+	if(!data) return null;
 	if(data.data) return data.data;
 	if(data._data && data._data.getContent) return Array.prototype.slice.call(data._data.getContent(),0).map(function(x) { return String.fromCharCode(x); }).join("");
 	return null;
@@ -1067,14 +1087,14 @@ function parseZip(zip) {
 			props.SheetNames[j] = wbsheets[j].name;
 		}
 		for(i = 0; i != props.Worksheets; ++i) {
-			try { /* TODO: remove these guards */ 
+			try { /* TODO: remove these guards */
 			sheets[props.SheetNames[i]]=parseSheet(getdata(getzipfile(zip, 'xl/worksheets/sheet' + (i+1) + '.xml')));
 			} catch(e) {}
 		}
 	}
 	else {
 		for(i = 0; i != props.Worksheets; ++i) {
-			try { 
+			try {
 			sheets[props.SheetNames[i]]=parseSheet(getdata(getzipfile(zip, dir.sheets[i].replace(/^\//,''))));
 			} catch(e) {}
 		}
