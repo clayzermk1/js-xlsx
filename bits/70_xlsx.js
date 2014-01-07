@@ -153,6 +153,7 @@ function parseSheet(data) {
 							return;
 						}
 					}
+					p.t = "str"; p.v = undefined;
 				}
 				else { p.t = "str"; p.v = undefined; }
 			}
